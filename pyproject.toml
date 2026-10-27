@@ -1,0 +1,9 @@
+[project]
+name = "detectorplace"
+version = "0.1.0"
+description = "AI-assisted fire & gas detector placement, coverage validation and cost estimation"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

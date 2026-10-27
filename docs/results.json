@@ -1,0 +1,90 @@
+{
+  "vision": {
+    "equipment_iou": 0.9934514637904468,
+    "height_band_accuracy": 1.0,
+    "zone_accuracy": 0.9864219635929573,
+    "leaks_found": 8,
+    "leaks_true": 8,
+    "leak_max_error_m": 0.0
+  },
+  "timing": {
+    "vision_s": 0.06823659990914166,
+    "coverage_s": 0.5795372000429779,
+    "greedy_s": 0.0522662999574095,
+    "ga_s": 135.31693549989723
+  },
+  "rays": 8250345,
+  "chosen": {
+    "cost": 129980.0,
+    "flame": 14,
+    "gas": 10,
+    "coverage": {
+      "A1": 0.9910514541387024,
+      "A2": 0.7785234899328859,
+      "B1": 0.8855325914149443,
+      "C1": 0.6617842876165113,
+      "G1": 0.8234398782343988
+    }
+  },
+  "truth_coverage": {
+    "A1": 0.9865771812080537,
+    "A2": 0.7718120805369127,
+    "B1": 0.8732876712328768,
+    "C1": 0.6809045226130653,
+    "G1": 0.8256880733944955
+  },
+  "greedy": {
+    "cost": 148048.0,
+    "n": 27
+  },
+  "milp": {
+    "status": "Time limit reached. (HiGHS Status 13: Time limit reached)",
+    "seconds": 600.1,
+    "variables": 7596,
+    "constraints": 3213,
+    "objective": 129559.99999999999,
+    "bound": 119384.0,
+    "gap": 0.07854276011114532,
+    "cost": 129560.0,
+    "shortfall": 0.0031229310013700345,
+    "feasible": true
+  },
+  "n1_failures": 24,
+  "gaps": [
+    {
+      "x": 49.8,
+      "y": 6.3,
+      "area_m2": 31,
+      "grade": "B",
+      "reason": "Visible from available positions but left uncovered because the grade target is already met; covering it would cost an extra detector."
+    },
+    {
+      "x": 45.9,
+      "y": 20.6,
+      "area_m2": 21,
+      "grade": "B",
+      "reason": "Visible from available positions but left uncovered because the grade target is already met; covering it would cost an extra detector."
+    },
+    {
+      "x": 51.3,
+      "y": 27.2,
+      "area_m2": 6,
+      "grade": "B",
+      "reason": "Visible from available positions but left uncovered because the grade target is already met; covering it would cost an extra detector."
+    },
+    {
+      "x": 59.5,
+      "y": 12.0,
+      "area_m2": 4,
+      "grade": "B",
+      "reason": "Visible from available positions but left uncovered because the grade target is already met; covering it would cost an extra detector."
+    },
+    {
+      "x": 61.0,
+      "y": 32.5,
+      "area_m2": 4,
+      "grade": "B",
+      "reason": "Visible from available positions but left uncovered because the grade target is already met; covering it would cost an extra detector."
+    }
+  ]
+}

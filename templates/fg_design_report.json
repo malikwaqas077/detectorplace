@@ -1,0 +1,58 @@
+{
+  "document_title": "Fire & Gas Detection Layout - Preliminary Design Report",
+  "document_number": "{project_code}-FG-RPT-001",
+  "revision": "A (issued for review)",
+  "sections": [
+    {
+      "id": "scope",
+      "title": "1. Scope and basis of design",
+      "text": "This report describes a preliminary fire and gas (F&G) detector layout for a {plant_name}. The layout was produced automatically from the plot plan by DetectorPlace and is intended as a starting point for review by a competent F&G engineer. It covers {n_fire_points} m² of graded fire hazard area and {n_gas_points} m² of credible gas release zones around {n_leaks} leak sources."
+    },
+    {
+      "id": "method",
+      "title": "2. Method",
+      "text": "Equipment footprints, elevation bands, hazard grades and leak sources were extracted from the plot-plan drawing by computer vision (equipment IoU {vision_iou}% against the source geometry). {n_candidates} candidate flame detector configurations (position, mounting height and orientation) and {n_gas_candidates} gas detector positions were evaluated by 3D line-of-sight ray marching ({rays} detector-to-point checks). A multi-objective genetic algorithm (NSGA-II with repair and redundancy pruning) traded installed cost against risk-weighted coverage shortfall. The cheapest layout meeting every target was selected."
+    },
+    {
+      "id": "targets",
+      "title": "3. Performance targets and achieved coverage",
+      "text": "Targets follow the performance-based structure of ISA-TR84.00.07: a minimum coverage fraction per hazard grade, with voted (2ooN) coverage required in Grade A areas to support executive action. Target values are project assumptions and must be confirmed against the site F&G philosophy.",
+      "table": "coverage"
+    },
+    {
+      "id": "schedule",
+      "title": "4. Detector schedule",
+      "text": "{n_flame} flame detectors and {n_gas} point gas detectors are proposed. Coordinates are in metres from the plot-plan origin (top-left); azimuth is measured clockwise from plant east on the drawing.",
+      "table": "schedule"
+    },
+    {
+      "id": "figure",
+      "title": "5. Coverage map",
+      "figure": "coverage_map"
+    },
+    {
+      "id": "resilience",
+      "title": "6. Single-detector failure (N-1) check",
+      "text": "{n1_summary}",
+      "table": "n_minus_1"
+    },
+    {
+      "id": "gaps",
+      "title": "7. Residual uncovered areas",
+      "text": "{gap_summary}",
+      "table": "gaps"
+    },
+    {
+      "id": "cost",
+      "title": "8. Cost estimate (Class 4, indicative)",
+      "text": "Rates are placeholders and must be replaced with current supplier quotations and company estimating norms before use.",
+      "table": "cost"
+    },
+    {
+      "id": "limits",
+      "title": "9. Limitations and verification",
+      "text": "Geometric mapping assumes a 2.5D plant (equipment as extruded footprints), a fixed design fire height and an idealised detector cone with off-axis range loss. It does not model congestion below pipe racks, smoke obscuration, gas dispersion (CFD) or detector-specific polar diagrams. Results were re-checked against the source geometry ({truth_check}). This layout is advisory. It must be verified and signed off by a competent person before construction."
+    }
+  ],
+  "sign_off": ["Prepared (DetectorPlace v0.1, automated)", "Checked (F&G engineer)", "Approved (lead engineer)"]
+}

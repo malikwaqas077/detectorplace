@@ -1,0 +1,10 @@
+numpy>=1.26
+scipy>=1.11
+numba>=0.59
+opencv-python-headless>=4.8
+matplotlib>=3.8
+plotly>=5.20
+pandas>=2.2
+reportlab>=4.0
+streamlit>=1.40
+pytest>=8.0

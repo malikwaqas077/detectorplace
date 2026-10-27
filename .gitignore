@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+results/
+/_*.py
+/_*.png
+/_*.pdf
+/_*.pkl
+*.mp4
+.streamlit.log
