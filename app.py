@@ -10,11 +10,11 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from detectorplace import pipeline, report, viz
+from detectorplace import pipeline, report, scene, segnet, viz
 from detectorplace.coverage import _cone_coverage, flame_wedge
 from detectorplace.detectors import FlameModel
 from detectorplace.evaluate import DEFAULT_REQS
-from detectorplace.plant import GRADES, RES
+from detectorplace.plant import GRADES, RES, demo_plant
 
 st.set_page_config(page_title="DetectorPlace", page_icon="🔥", layout="wide")
 CACHE = Path(__file__).parent / "results" / "ctx.pkl"
@@ -32,14 +32,79 @@ def baseline_ctx():
     return ctx
 
 
+SAMPLES = Path(__file__).parent / "samples"
+
+
+def run_input(args, gens):
+    bar = st.progress(0.0, "Reading the input and building the coverage model...")
+    new = pipeline.build_from(**args)
+    cb = lambda g, n, best: bar.progress(g / n, f"Generation {g}/{n} · cheapest compliant £{best:,.0f}"
+                                         if best == best else f"Generation {g}/{n}")
+    new["opt"] = pipeline.optimise(new, generations=gens, callback=cb)
+    new["explain"] = pipeline.explain_design(new, new["opt"]["chosen"]["design"])
+    bar.empty()
+    return new
+
+
 if "ctx" not in st.session_state:
     st.session_state.ctx = baseline_ctx()
+    st.session_state.input = None
+
+with st.sidebar:
+    st.markdown("### Input")
+    src = st.radio("Plant drawing", ["Demo plot plan (cached run)", "Demo plant, different drawing style",
+                                     "Sample CAD file (DXF)", "Upload an image", "Upload a CAD file (DXF)"])
+    args = None
+    if src == "Demo plant, different drawing style":
+        st.caption("The same plant drawn in a style the OpenCV rules were never tuned for.")
+        reader = st.radio("Reader", ["Learned model", "OpenCV rules"], horizontal=True)
+        img = scene.render(scene.demo_spec(), scene.hard_style())[0]
+        st.image(img, use_container_width=True)
+        args = dict(source=img, kind="image", px_per_m=12.0, truth=demo_plant(),
+                    reader="learned" if reader == "Learned model" else "opencv", name="Synthetic gas compression station")
+    elif src == "Sample CAD file (DXF)":
+        st.caption("samples/demo_plant.dxf: layers EQUIP (thickness = height), HAZ_A/B/C, LEAK, FG_PANEL; "
+                   "grid and text layers are ignored. Units mm.")
+        args = dict(source=str(SAMPLES / "demo_plant.dxf"), kind="dxf", name="Synthetic gas compression station (CAD)")
+    elif src == "Upload an image":
+        up = st.file_uploader("Plot plan (PNG/JPG)", type=["png", "jpg", "jpeg"])
+        ppm = st.number_input("Scale (pixels per metre)", 2.0, 50.0, 10.0, 0.5)
+        reader = st.radio("Reader", ["Learned model", "OpenCV rules"], horizontal=True)
+        if up is not None:
+            import cv2
+            img = cv2.imdecode(np.frombuffer(up.getvalue(), np.uint8), cv2.IMREAD_COLOR)[..., ::-1].copy()
+            args = dict(source=img, kind="image", px_per_m=float(ppm), name=up.name,
+                        reader="learned" if reader == "Learned model" else "opencv")
+    elif src == "Upload a CAD file (DXF)":
+        up = st.file_uploader("Plot plan (DXF)", type=["dxf"])
+        st.caption("Layers: EQUIP* (closed outlines; height from thickness or an _H9 suffix), HAZ_A/B/C, LEAK*, "
+                   "FG_PANEL, optional PLOT_LIMIT.")
+        if up is not None:
+            import io
+            args = dict(source=io.StringIO(up.getvalue().decode("utf-8", errors="replace")), kind="dxf", name=up.name)
+    if args is not None:
+        if args.get("reader") == "learned" and not segnet.available():
+            st.error("The learned reader needs torch and models/segnet.pt.")
+        gens = st.slider("Optimiser generations", 20, 120, 50, 10)
+        if st.button("Run DetectorPlace", type="primary", use_container_width=True):
+            try:
+                st.session_state.ctx = run_input(args, gens)
+                st.session_state.input = args
+                st.rerun()
+            except Exception as e:  # show input problems to the user, not a stack trace
+                st.error(f"Could not process this input: {e}")
+    elif src.startswith("Demo plot plan") and st.session_state.input is not None:
+        if st.button("Back to the cached demo run", use_container_width=True):
+            st.session_state.ctx, st.session_state.input = baseline_ctx(), None
+            st.rerun()
+
 ctx = st.session_state.ctx
 p, plant, opt = ctx["problem"], ctx["plant"], ctx["opt"]
 
 st.markdown("## 🔥 DetectorPlace")
 st.caption("AI-assisted fire & gas detector placement, coverage validation and cost estimation · "
-           "synthetic gas compression station · all data and rates illustrative")
+           f"{plant.name} · input: {ctx.get('source', 'demo drawing')} · reader: {ctx.get('reader', 'OpenCV rules')} · "
+           "all data and rates illustrative")
 
 chosen = opt["chosen"]
 c1, c2, c3, c4, c5 = st.columns(5)
@@ -50,7 +115,10 @@ c3.metric("vs greedy heuristic", f"£{opt['greedy']['cost'] - chosen['cost']:,.0
 c4.metric("Targets met", f"{sum(chosen['coverage'][q.key] >= q.target for q in p.reqs)}/{len(p.reqs)}")
 c5.metric("Line-of-sight checks", f"{ctx['rays'] / 1e6:.1f} M", f"{ctx['timing']['coverage_s']:.1f} s")
 
-tabs = st.tabs(["1 · Plot plan → model", "2 · Line of sight", "3 · Optimiser", "4 · Design review", "5 · Report"])
+tabs = st.tabs(["1 · Plot plan → model", "2 · Line of sight", "3 · Optimiser", "4 · Design review", "5 · Report",
+                "6 · Quality flags"])
+flags = ctx["explain"].get("flags", [])
+nflag = {k: sum(x["severity"] == k for x in flags) for k in ("error", "warning", "info")}
 
 
 def plant_fig(show_grades=True, height=520):
@@ -71,22 +139,48 @@ def plant_fig(show_grades=True, height=520):
 with tabs[0]:
     st.markdown("#### From a drawing to a 2.5D engineering model")
     a, b = st.columns(2)
-    a.image(ctx["img"], caption="Input: plot-plan export (shade = elevation band, tint = hazard grade, "
-                                "blue = leak source)", use_container_width=True)
+    if ctx["img"] is not None:
+        a.image(ctx["img"], caption="Input: plot-plan image (shade = elevation band, tint = hazard grade, "
+                                    "blue = leak source)", use_container_width=True)
+    else:
+        rep = ctx["vision_debug"]["cad_report"]
+        a.markdown("**Input: CAD drawing (DXF)**, read by layer, no recognition needed")
+        a.dataframe(pd.DataFrame([{"Item": k.replace("_", " "), "Count": v} for k, v in rep.counts.items()] +
+                                 [{"Item": "units", "Count": rep.units}]).astype(str), hide_index=True)
+        if rep.ignored_layers:
+            a.caption("Ignored: " + ", ".join(f"{k} ×{v}" for k, v in rep.ignored_layers.items()))
     fig = plant_fig()
     fig.add_scatter(x=plant.leaks[:, 0], y=plant.leaks[:, 1], mode="markers",
                     marker=dict(color="#1d4ed8", size=9, symbol="diamond"), name="leak source")
     b.plotly_chart(fig, use_container_width=True)
     b.caption("Extracted: equipment footprints with heights, hazard grades and leak sources, on a 0.5 m grid")
     vs = ctx["vision_score"]
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Equipment footprint IoU", f"{vs['equipment_iou'] * 100:.1f}%")
-    m2.metric("Elevation band correct", f"{vs['height_band_accuracy'] * 100:.0f}%")
-    m3.metric("Hazard grade agreement", f"{vs['zone_accuracy'] * 100:.1f}%")
-    m4.metric("Leak sources found", f"{vs['leaks_found']}/{vs['leaks_true']}")
-    st.info("OpenCV pipeline: HSV segmentation → morphology → connected components → elevation from fill "
-            "shade → resample to the analysis grid. Text labels, grid lines and sensor noise are rejected. "
-            "Scores compare the extracted model with the geometry the drawing was rendered from.")
+    if vs:
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Equipment footprint IoU", f"{vs['equipment_iou'] * 100:.1f}%")
+        m2.metric("Elevation band correct", f"{vs['height_band_accuracy'] * 100:.0f}%")
+        m3.metric("Hazard grade agreement", f"{vs['zone_accuracy'] * 100:.1f}%")
+        m4.metric("Leak sources found", f"{vs['leaks_found']}/{vs['leaks_true']}")
+    else:
+        st.caption("No source geometry exists for this input, so accuracy can't be scored here; see the cross-check "
+                   "in tab 6.")
+    if ctx.get("reader", "").startswith("Learned"):
+        st.info("Learned reader: a small U-Net (0.39 M parameters, CPU) trained on 2,000 randomised synthetic plot "
+                "plans with real P&ID line art as clutter. It outputs per-cell elevation band, hazard grade and a "
+                "leak-source heatmap, with a confidence for every cell.")
+    elif ctx["img"] is not None:
+        st.info("OpenCV pipeline: HSV segmentation → morphology → connected components → elevation from fill "
+                "shade → resample to the analysis grid. Text labels, grid lines and sensor noise are rejected. "
+                "Scores compare the extracted model with the geometry the drawing was rendered from.")
+    nn = ctx.get("nn_debug")
+    if nn is not None:
+        c = np.minimum(nn["confidence"]["equipment"], nn["confidence"]["zone"])
+        cf = go.Figure(go.Heatmap(z=c, x0=RES / 2, dx=RES, y0=RES / 2, dy=RES, zmin=0.3, zmax=1, colorscale="RdYlGn",
+                                  colorbar=dict(title="conf."), hovertemplate="%{z:.2f}<extra></extra>"))
+        cf.update_yaxes(autorange="reversed", scaleanchor="x")
+        cf.update_layout(height=320, margin=dict(l=10, r=10, t=30, b=10), title="Learned reader confidence "
+                         "(red areas need a human check)")
+        st.plotly_chart(cf, use_container_width=True)
     areas = pd.DataFrame([{"Hazard grade": GRADES[g], "Open area (m²)": int(((plant.grades == g) &
                           (plant.heights == 0)).sum() * RES * RES)} for g in (3, 2, 1)])
     st.dataframe(areas, hide_index=True)
@@ -97,8 +191,8 @@ with tabs[1]:
                "sight line casts a shadow; the cone narrows with off-axis range loss.")
     l, r = st.columns([1, 3])
     fm = FlameModel()
-    x = l.slider("x (m)", 1.0, plant.width - 1, 40.0, 0.5)
-    y = l.slider("y (m)", 1.0, plant.depth - 1, 23.0, 0.5)
+    x = l.slider("x (m)", 1.0, plant.width - 1, min(40.0, plant.width - 1), 0.5)
+    y = l.slider("y (m)", 1.0, plant.depth - 1, min(23.0, plant.depth - 1), 0.5)
     z = l.select_slider("Mounting height (m)", [3.0, 6.0], 3.0)
     az = l.slider("Azimuth (°)", 0, 315, 0, 45)
     rng_m = l.slider("Detection range for design fire (m)", 10, 30, int(fm.range_m))
@@ -181,7 +275,13 @@ with tabs[2]:
         margin = g2.slider("Design margin on every target", 0.0, 0.05, p.margin, 0.01)
         if st.button("Re-optimise", type="primary"):
             bar = st.progress(0.0, "Building coverage model...")
-            new = pipeline.build(reqs=new_reqs, margin=margin)
+            inp = st.session_state.get("input")
+            if inp is None:
+                new = pipeline.build(reqs=new_reqs, margin=margin)
+            else:
+                if hasattr(inp.get("source"), "seek"):
+                    inp["source"].seek(0)
+                new = pipeline.build_from(**inp, reqs=new_reqs, margin=margin)
             cb = lambda g, n, best: bar.progress(g / n, f"Generation {g}/{n} · cheapest compliant £{best:,.0f}"
                                                  if best == best else f"Generation {g}/{n}")
             new["opt"] = pipeline.optimise(new, generations=gens, callback=cb)
@@ -197,10 +297,11 @@ with tabs[3]:
     cov = ex["coverage"]
     tc = ex["truth_coverage"]
     b.dataframe(pd.DataFrame([{"Requirement": q.label, "Target": f"{q.target:.0%}",
-                               "Achieved": f"{cov[q.key]:.1%}", "Re-checked on true geometry": f"{tc[q.key]:.1%}",
+                               "Achieved": f"{cov[q.key]:.1%}", "Re-checked": f"{tc[q.key]:.1%}",
                                "": "✅" if tc[q.key] >= q.target else "⚠️"} for q in p.reqs]), hide_index=True)
-    b.caption(f"Optimised to target + {p.margin:.0%} margin so small drawing-extraction errors cannot "
-              "push the built design below target.")
+    b.caption(f"'Re-checked' = the same layout evaluated on {ctx.get('check_name', 'the true geometry')}. "
+              f"Optimised to target + {p.margin:.0%} margin so small drawing-reading errors cannot push the built "
+              "design below target.")
     sched = pd.DataFrame(ex["schedule"]).drop(columns=["cand"])
     b.dataframe(sched[["tag", "type", "x", "y", "mount_m", "azimuth_deg", "unique_points", "cost", "why"]],
                 hide_index=True, height=300)
@@ -226,3 +327,17 @@ with tabs[4]:
     b.markdown("**Coverage against targets**")
     b.dataframe(pd.DataFrame(tb["coverage"][1:], columns=tb["coverage"][0]), hide_index=True)
     b.warning("Advisory output. A competent F&G engineer must verify and sign off the layout before use.")
+
+with tabs[5]:
+    st.markdown("#### What could make this design wrong?")
+    st.caption("The coverage maths is exact for the plant model it is given. These checks flag where the model "
+               "itself may be wrong: the drawing reading, the CAD layers, the scale, placeholder detector data, "
+               "and targets met by only a thin margin.")
+    q1, q2, q3 = st.columns(3)
+    q1.metric("Errors", nflag["error"])
+    q2.metric("Warnings", nflag["warning"])
+    q3.metric("Notes", nflag["info"])
+    for x in sorted(flags, key=lambda x: ("error", "warning", "info").index(x["severity"])):
+        {"error": st.error, "warning": st.warning, "info": st.info}[x["severity"]](f"**{x['source']}** · {x['message']}")
+    if not flags:
+        st.caption("This cached run predates the quality checks; re-run from the sidebar to see them.")

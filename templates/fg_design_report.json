@@ -11,7 +11,7 @@
     {
       "id": "method",
       "title": "2. Method",
-      "text": "Equipment footprints, elevation bands, hazard grades and leak sources were extracted from the plot-plan drawing by computer vision (equipment IoU {vision_iou}% against the source geometry). {n_candidates} candidate flame detector configurations (position, mounting height and orientation) and {n_gas_candidates} gas detector positions were evaluated by 3D line-of-sight ray marching ({rays} detector-to-point checks). A multi-objective genetic algorithm (NSGA-II with repair and redundancy pruning) traded installed cost against risk-weighted coverage shortfall. The cheapest layout meeting every target was selected."
+      "text": "{input_method} {n_candidates} candidate flame detector configurations (position, mounting height and orientation) and {n_gas_candidates} gas detector positions were evaluated by 3D line-of-sight ray marching ({rays} detector-to-point checks). A multi-objective genetic algorithm (NSGA-II with repair and redundancy pruning) traded installed cost against risk-weighted coverage shortfall. The cheapest layout meeting every target was selected."
     },
     {
       "id": "targets",
@@ -49,10 +49,20 @@
       "table": "cost"
     },
     {
+      "id": "quality",
+      "title": "9. Input and result quality flags",
+      "text": "{flag_summary}",
+      "table": "flags"
+    },
+    {
       "id": "limits",
-      "title": "9. Limitations and verification",
-      "text": "Geometric mapping assumes a 2.5D plant (equipment as extruded footprints), a fixed design fire height and an idealised detector cone with off-axis range loss. It does not model congestion below pipe racks, smoke obscuration, gas dispersion (CFD) or detector-specific polar diagrams. Results were re-checked against the source geometry ({truth_check}). This layout is advisory. It must be verified and signed off by a competent person before construction."
+      "title": "10. Limitations and verification",
+      "text": "Geometric mapping assumes a 2.5D plant (equipment as extruded footprints), a fixed design fire height and an idealised detector cone with off-axis range loss. It does not model congestion below pipe racks, smoke obscuration, gas dispersion (CFD) or detector-specific polar diagrams. Results were re-checked against {check_name} ({truth_check}). This layout is advisory. It must be verified and signed off by a competent person before construction."
     }
   ],
-  "sign_off": ["Prepared (DetectorPlace v0.1, automated)", "Checked (F&G engineer)", "Approved (lead engineer)"]
+  "sign_off": [
+    "Prepared (DetectorPlace v0.2, automated)",
+    "Checked (F&G engineer)",
+    "Approved (lead engineer)"
+  ]
 }

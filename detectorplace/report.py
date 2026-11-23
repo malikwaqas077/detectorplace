@@ -34,9 +34,28 @@ def context_fields(ctx, project_code="DEMO"):
                if gaps else "No uncovered Grade A/B regions of 4 m² or more remain.")
     tc = ex["truth_coverage"]
     truth = ", ".join(f"{q.key} {tc[q.key] * 100:.1f}%" for q in p.reqs)
+    vs, reader, check_name = ctx.get("vision_score"), ctx.get("reader", "OpenCV rules"), \
+        ctx.get("check_name", "the true geometry")
+    if ctx.get("source", "").startswith("CAD"):
+        rep = ctx["vision_debug"]["cad_report"]
+        method = (f"Equipment outlines and heights, hazard grade areas and leak sources were read directly from "
+                  f"the layers of the CAD drawing (units: {rep.units}), so no recognition step was needed.")
+    elif vs:
+        method = (f"Equipment footprints, elevation bands, hazard grades and leak sources were extracted from the "
+                  f"plot-plan drawing by {reader.lower()} (equipment IoU {vs['equipment_iou'] * 100:.1f}% against "
+                  "the source geometry).")
+    else:
+        method = (f"Equipment footprints, elevation bands, hazard grades and leak sources were extracted from the "
+                  f"plot-plan drawing by {reader.lower()}. No source geometry exists for this drawing, so the "
+                  f"layout was cross-checked on {check_name}.")
+    flags = ex.get("flags", [])
+    nf = {k: sum(x["severity"] == k for x in flags) for k in ("error", "warning", "info")}
+    flag_txt = (f"{nf['error']} error(s), {nf['warning']} warning(s) and {nf['info']} note(s) were raised about the "
+                "input data and the result. Errors must be resolved before this layout is used; warnings need an "
+                "engineer's judgement.")
     return {"project_code": project_code, "plant_name": ctx["truth"].name.lower(),
             "n_fire_points": len(p.fire.xy), "n_gas_points": len(p.gas.xy), "n_leaks": len(ctx["plant"].leaks),
-            "vision_iou": f"{ctx['vision_score']['equipment_iou'] * 100:.1f}",
+            "input_method": method, "check_name": check_name, "flag_summary": flag_txt,
             "n_candidates": f"{p.Mf.shape[0]:,}", "n_gas_candidates": p.Mg.shape[0], "rays": f"{ctx['rays']:,}",
             "n_flame": sum(r["type"].startswith("Flame") for r in sched),
             "n_gas": sum(not r["type"].startswith("Flame") for r in sched),
@@ -58,6 +77,10 @@ def tables(ctx):
     t["n_minus_1"] = [["Out of service"] + keys + ["Below target"]] + \
         [[r["tag"]] + [f"{r[k]:.1f}" for k in keys] + [", ".join(r["targets_missed"]) or "-"]
          for r in ex["n_minus_1"]]
+    t["flags"] = [["Severity", "Source", "Finding"]] + \
+        [[x["severity"].upper(), x["source"], x["message"]] for x in
+         sorted(ex.get("flags", []), key=lambda x: ("error", "warning", "info").index(x["severity"]))] \
+        if ex.get("flags") else [["-", "-", "No flags raised"]]
     t["gaps"] = [["Location (x, y)", "Grade", "Area m²", "Reason"]] + \
         [[f"({g['x']}, {g['y']})", g["grade"], g["area_m2"], g["reason"]] for g in ex["gaps"][:12]] \
         if ex["gaps"] else [["-", "-", "-", "No residual gaps"]]
@@ -99,14 +122,15 @@ def build_pdf(ctx, path=None, project_code="DEMO"):
                             bottomMargin=14 * mm, title=tpl["document_title"], author="DetectorPlace")
     st = [Paragraph(_esc(tpl["document_title"]), ss["Title"]),
           Paragraph(f"Document {tpl['document_number'].format(**f)} · Revision {tpl['revision']} · "
-                    f"{date.today():%d %b %Y} · Synthetic demonstration data", body), Spacer(1, 4)]
+                    f"{date.today():%d %b %Y} · Source: {_esc(ctx.get('source', 'demo drawing'))}", body), Spacer(1, 4)]
     for sec in tpl["sections"]:
         st.append(Paragraph(_esc(sec["title"]), h))
         if sec.get("text"):
             st.append(Paragraph(_esc(sec["text"].format(**f)), body))
         if sec.get("table"):
             data = [[Paragraph(_esc(c), cell) for c in row] for row in tb[sec["table"]]]
-            t = Table(data, repeatRows=1, hAlign="LEFT")
+            widths = [22 * mm, 28 * mm, 128 * mm] if sec["table"] == "flags" else None
+            t = Table(data, repeatRows=1, hAlign="LEFT", colWidths=widths)
             t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e6eef5")),
                                    ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#b8c4ce")),
                                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
