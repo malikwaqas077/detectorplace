@@ -1,0 +1,55 @@
+{
+  "learned": {
+    "cost": 139080.0,
+    "flame": 15,
+    "gas": 11,
+    "true_geometry": {
+      "A1": 96.9,
+      "A2": 80.5,
+      "B1": 89.0,
+      "C1": 64.8,
+      "G1": 83.3
+    },
+    "targets_met_on_truth": 5,
+    "n_targets": 5,
+    "flags": [
+      "warning: Detector ranges, cones of vision and costs are placeholders. Replace them with certified performance data (e.g. FM 3260) and company rates before relying on the design."
+    ],
+    "seconds": 62
+  },
+  "opencv": {
+    "cost": 114220.0,
+    "flame": 14,
+    "gas": 6,
+    "true_geometry": {
+      "A1": 94.9,
+      "A2": 70.7,
+      "B1": 86.8,
+      "C1": 65.1,
+      "G1": 44.0
+    },
+    "targets_met_on_truth": 3,
+    "n_targets": 5,
+    "flags": [
+      "warning: Grade A fire, 2ooN drops to 70.7% when the layout is re-checked on the true geometry.",
+      "warning: Gas release zones, 1ooN drops to 44.0% when the layout is re-checked on the true geometry.",
+      "warning: Detector ranges, cones of vision and costs are placeholders. Replace them with certified performance data (e.g. FM 3260) and company rates before relying on the design."
+    ],
+    "seconds": 50
+  },
+  "cad": {
+    "cost": 136036.0,
+    "flame": 15,
+    "gas": 10,
+    "true_geometry": {
+      "A1": 100.0,
+      "A2": 78.1,
+      "B1": 88.9,
+      "C1": 67.0,
+      "G1": 82.3
+    },
+    "targets_met_on_truth": 5,
+    "n_targets": 5,
+    "seconds": 55
+  }
+}

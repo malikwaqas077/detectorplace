@@ -9,9 +9,12 @@ Partnership (KTP Associate, Software Engineer, ref T03269). It goes from a plot-
 explained and costed F&G detector layout:
 
 ```
-plot-plan image ──► computer vision ──► 2.5D plant model ──► 3D line-of-sight coverage engine (Numba)
-                                                                        │
-       PDF design report ◄── explainability, N-1, gaps ◄── NSGA-II cost-vs-risk optimiser ◄─┘
+CAD drawing (DXF) ──► layer mapping ───────────┐
+                                                ├─► 2.5D plant model ──► 3D line-of-sight coverage engine (Numba)
+plot-plan image ──► OpenCV rules or U-Net ─────┘           │                              │
+                    (with per-cell confidence)    quality flags ◄──────────────────────────┤
+                                                                                          ▼
+       PDF design report ◄── explainability, N-1, gaps ◄── NSGA-II cost-vs-risk optimiser
                                                               (validated against greedy + exact MILP)
 ```
 
@@ -49,6 +52,62 @@ Coverage targets (illustrative, structured like ISA-TR84.00.07 performance-based
 The optimiser works to target + 2% so that small errors in reading the drawing can't push the real plant
 below target. The "true geometry" column above checks that this margin worked.
 
+## v0.2: CAD input, a learned drawing reader, and quality flags
+
+The v0.1 results above are unchanged (same pipeline, same seed). v0.2 adds three things, aimed at the
+question "the maths is exact, but what if the plant model is wrong?"
+
+**1. CAD input.** `cad.py` reads a DXF plot plan by layer: closed `EQUIP*` outlines with height from the entity
+thickness (or an `_H9` layer suffix), `HAZ_A/B/C` areas, `LEAK` points and the `FG_PANEL`. It handles mm, cm, m,
+inches and feet, flips CAD's y axis, ignores grid, text and title-block layers, and reports anything it had to
+assume. The demo plant exported to DXF (`samples/demo_plant.dxf`, in mm) reads back with hazard grades 100% and
+heights 99.9% identical to the source. `samples/second_plant.dxf` is a different plant with deliberate problems
+for the checks to find.
+
+**2. A learned drawing reader.** There is no public dataset of industrial plot plans labelled with equipment
+heights, hazard grades and leak sources, so the training data is generated (`scene.py`): 2,000 invented plants,
+each drawn in a random style (shades, tints, outlines, hatching, grids, text, dimension lines, title blocks,
+noise, blur, JPEG), with line art from real P&ID sheets
+([mgupta70/PID_Symbol_Detection](https://github.com/mgupta70/PID_Symbol_Detection), MIT) pasted in as clutter.
+Labels come free from the geometry. A small U-Net (`segnet.py`, 0.39 M parameters, 1.5 MB, trained in 33 minutes
+on 2 CPU cores) outputs per-cell elevation band, hazard grade and a leak-source heatmap, each with a confidence.
+The demo plant was never used in training.
+
+| Reader | Test set | Equipment IoU | Height band | Hazard grade | Leak sources found | False leaks / drawing |
+|---|---|---|---|---|---|---|
+| OpenCV rules | 150 unseen plants, random styles | 92.5% | 99.6% | 98.8% | 82.5% | 0.00 |
+| **Learned (U-Net)** | 150 unseen plants, random styles | **98.4%** | **99.8%** | **99.9%** | **99.8%** | 0.17 |
+| OpenCV rules | demo plant, original style | 99.3% | 100% | 98.6% | 8/8 | 0 |
+| **Learned (U-Net)** | demo plant, original style | **99.8%** | 100% | **100%** | 8/8 | 0 |
+| OpenCV rules | demo plant, different style | 96.3% | 98.4% | 98.3% | **4/8** | 0 |
+| **Learned (U-Net)** | demo plant, different style | **99.7%** | 98.9% | **100%** | **8/8** | 0 |
+
+![Readers compared](docs/readers.png)
+
+Why it matters end to end. The demo plant drawn in the different style, optimised for 80 generations and then
+re-checked on the true geometry ([`docs/v02_end_to_end.json`](docs/v02_end_to_end.json)):
+
+| Input → reader | Layout | Cost | Targets met on the true plant |
+|---|---|---|---|
+| Image → OpenCV rules | 14 flame + 6 gas | £114,220 | **3 of 5**: it missed half the leak sources, so gas coverage is really 44% against an 80% target |
+| Image → learned reader | 15 flame + 11 gas | £139,080 | **5 of 5** |
+| CAD file | 15 flame + 10 gas | £136,036 | **5 of 5** |
+
+The cheap OpenCV layout looks fine on its own model. It is only wrong because the model is wrong, which is
+exactly the failure the quality flags exist to catch: here they report the disagreement between the two
+readers and the targets that fail on re-check.
+
+**3. Quality flags** (`checks.py`, tab 6 in the app and section 9 of the report). Errors and warnings for: low
+reader confidence (with a confidence map), disagreement between the OpenCV and learned readings of the same
+drawing, missing or open CAD outlines, missing heights, unset units, no hazard areas or leak sources, an
+implausible scale, targets met by less than the design margin, targets that fail when the layout is re-checked
+on the other model, and placeholder detector data. As a sanity check, real P&ID sheets fed in as if they were plot
+plans raise errors (28% low-confidence area, or no hazard areas found) rather than producing a design.
+
+What this does not show: the learned reader is trained on one drawing convention (shade = elevation, tint =
+grade). A real deployment would retrain or fine-tune it on Protex's own CAD exports and drawing standard, and the
+CAD route should be preferred whenever a DXF exists.
+
 ## What is in the box
 
 | Module | What it does |
@@ -61,6 +120,10 @@ below target. The "true geometry" column above checks that this margin worked.
 | `nsga2.py` | NSGA-II written from scratch: integer chromosome (position → off / height × orientation), non-dominated sorting, crowding, greedy repair + redundancy pruning (memetic) |
 | `baselines.py` | Greedy cost-effectiveness heuristic, and an exact mixed-integer program (SciPy/HiGHS) giving a provable lower bound |
 | `explain.py` | Detector schedule with a plain-English reason for each detector, N-1 failure analysis, residual gaps with the reason they are uncovered (shadowed vs. cost trade-off) |
+| `cad.py` | DXF reader (layer convention, units, y-flip, polygon rasterising, read report) and writer |
+| `scene.py` | Random plants and randomised drawing styles with free labels, for training and stress tests |
+| `segnet.py` | Learned drawing reader: U-Net segmentation of elevation band, hazard grade and leak heatmap, with confidence |
+| `checks.py` | Quality flags on the input, the reading and the result |
 | `report.py` + `templates/` | Fills a standard company report template and renders a PDF ([sample](docs/sample_report.pdf)) |
 | `app.py` | Streamlit UI: drawing → model, interactive single-detector line of sight, Pareto front, design review, report download |
 
@@ -70,7 +133,9 @@ below target. The "true geometry" column above checks that this margin worked.
 pip install -r requirements.txt
 python scripts/precompute.py 120 600   # optional: full run incl. a 10-minute MILP, cached for the UI
 streamlit run app.py
-pytest -q                              # 14 tests: geometry, vision round-trip, GA operators, baselines
+pytest -q                              # 20 tests: geometry, vision, CAD round-trip, learned reader, checks, GA, baselines
+python scripts/train_segnet.py 2000 6000   # optional: retrain the learned reader (about 35 min on 2 CPU cores)
+python scripts/eval_readers.py 150         # compare both readers on unseen drawings
 ```
 
 ## Honest limitations, and what a real project needs
@@ -83,6 +148,8 @@ pytest -q                              # 14 tests: geometry, vision round-trip, 
   analysis and company estimating norms.
 * **The MILP is time-limited.** It proves a lower bound but may not close the gap. The GA handles non-linear
   extensions (shared cable runs, detector diversity, maintenance access) that the MILP can't.
+* **The learned reader has only seen synthetic drawings.** It generalises across drawing styles, but real
+  company drawings need fine-tuning on a few labelled examples, and a CAD file should be used whenever one exists.
 * **Validation needs real designs.** The industrial step is to compare against layouts Protex engineers have
   already approved and to keep a competent engineer in the loop for every design.
 

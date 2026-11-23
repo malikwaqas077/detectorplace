@@ -1,0 +1,89 @@
+{
+  "heldout_random_styles": {
+    "n": 150,
+    "opencv": {
+      "equipment_iou": 0.9251,
+      "height_band_accuracy": 0.9959,
+      "zone_accuracy": 0.9875,
+      "leak_recall": 0.825,
+      "false_leaks_per_drawing": 0.0
+    },
+    "learned": {
+      "equipment_iou": 0.9842,
+      "height_band_accuracy": 0.9976,
+      "zone_accuracy": 0.9994,
+      "leak_recall": 0.9983,
+      "false_leaks_per_drawing": 0.17
+    }
+  },
+  "demo_original_style": {
+    "opencv": {
+      "equipment_iou": 0.9934514637904468,
+      "height_band_accuracy": 1.0,
+      "zone_accuracy": 0.9864219635929573,
+      "leaks_found": 8,
+      "leaks_true": 8,
+      "leak_recall": 1.0,
+      "false_leaks": 0
+    },
+    "learned": {
+      "equipment_iou": 0.9984591679506933,
+      "height_band_accuracy": 1.0,
+      "zone_accuracy": 1.0,
+      "leaks_found": 8,
+      "leaks_true": 8,
+      "leak_recall": 1.0,
+      "false_leaks": 0
+    }
+  },
+  "demo_hard_style": {
+    "opencv": {
+      "equipment_iou": 0.9629909365558912,
+      "height_band_accuracy": 0.9835294117647059,
+      "zone_accuracy": 0.9832139659803044,
+      "leaks_found": 4,
+      "leaks_true": 8,
+      "leak_recall": 0.5,
+      "false_leaks": 0
+    },
+    "learned": {
+      "equipment_iou": 0.996926623127161,
+      "height_band_accuracy": 0.9892100192678227,
+      "zone_accuracy": 1.0,
+      "leaks_found": 8,
+      "leaks_true": 8,
+      "leak_recall": 1.0,
+      "false_leaks": 0
+    }
+  },
+  "out_of_distribution_pid_sheets": [
+    {
+      "sheet": "0.jpg",
+      "low_confidence_fraction": 0.2813,
+      "graded_cells": 37510,
+      "flags": [
+        "warning: No leak sources were found: gas detection will not be designed.",
+        "error: 28.1% of the drawing (3,674 m\u00b2) was read with low confidence. The drawing may not follow the trained convention; prefer the CAD file or check the scale."
+      ]
+    },
+    {
+      "sheet": "1.jpg",
+      "low_confidence_fraction": 0.2888,
+      "graded_cells": 39018,
+      "flags": [
+        "warning: No leak sources were found: gas detection will not be designed.",
+        "error: 28.9% of the drawing (3,771 m\u00b2) was read with low confidence. The drawing may not follow the trained convention; prefer the CAD file or check the scale."
+      ]
+    },
+    {
+      "sheet": "2.jpg",
+      "low_confidence_fraction": 0.0011,
+      "graded_cells": 0,
+      "flags": [
+        "error: No hazard grade areas were found, so there is nothing to cover. Is this a plot plan in the expected convention?",
+        "warning: No leak sources were found: gas detection will not be designed.",
+        "info: 0.1% of the drawing (14 m\u00b2) was read with low confidence. Low-confidence areas are shown on the confidence map."
+      ]
+    }
+  ]
+}

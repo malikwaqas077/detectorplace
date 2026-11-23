@@ -53,7 +53,7 @@ def reader_flags(plant, debug, alt_plant=None, alt_name="the other reader"):
         iou = (a & b).sum() / max((a | b).sum(), 1)
         free = ~(a | b)
         zone_ag = float(np.mean(plant.grades[free] == alt_plant.grades[free])) if free.any() else 1.0
-        sev = "warning" if iou < 0.9 or zone_ag < 0.95 else "info"
+        sev = "warning" if iou < 0.9 or zone_ag < 0.95 or len(plant.leaks) != len(alt_plant.leaks) else "info"
         out.append(flag(sev, "Cross-check", f"Agreement with {alt_name}: equipment IoU {iou * 100:.1f}%, hazard grades "
                                              f"{zone_ag * 100:.1f}%, leak sources {len(plant.leaks)} vs {len(alt_plant.leaks)}."
                         + (" Review the areas where the two readings differ." if sev == "warning" else "")))
