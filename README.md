@@ -125,6 +125,7 @@ CAD route should be preferred whenever a DXF exists.
 | `segnet.py` | Learned drawing reader: U-Net segmentation of elevation band, hazard grade and leak heatmap, with confidence |
 | `checks.py` | Quality flags on the input, the reading and the result |
 | `report.py` + `templates/` | Fills a standard company report template and renders a PDF ([sample](docs/sample_report.pdf)) |
+| `view3d.py` | Interactive 3D view: equipment from the height model, ground coloured by coverage or hazard grade, detector poles and cones, gas radii, per-detector "what it sees" |
 | `app.py` | Streamlit UI: drawing → model, interactive single-detector line of sight, Pareto front, design review, report download |
 
 ## Run it

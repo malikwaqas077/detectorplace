@@ -101,24 +101,61 @@ with st.sidebar:
 ctx = st.session_state.ctx
 p, plant, opt = ctx["problem"], ctx["plant"], ctx["opt"]
 
-st.markdown("## 🔥 DetectorPlace")
-st.caption("AI-assisted fire & gas detector placement, coverage validation and cost estimation · "
-           f"{plant.name} · input: {ctx.get('source', 'demo drawing')} · reader: {ctx.get('reader', 'OpenCV rules')} · "
-           "all data and rates illustrative")
+CSS = """
+<style>
+.block-container {padding-top: 1.6rem;}
+.dp-title {font-size: 1.9rem; font-weight: 700; margin: 0;}
+.dp-sub {color: #64748b; font-size: 0.92rem; margin: 0.1rem 0 1rem 0;}
+.dp-cards {display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.8rem; margin-bottom: 0.6rem;}
+@media (max-width: 1100px) {.dp-cards {grid-template-columns: repeat(2, minmax(0, 1fr));}}
+.dp-card {border: 1px solid rgba(100,116,139,0.25); border-left: 6px solid var(--c); border-radius: 10px;
+          padding: 0.75rem 0.9rem; background: rgba(148,163,184,0.06);}
+.dp-card .k {font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: #64748b; font-weight: 600;}
+.dp-card .v {font-size: 1.75rem; font-weight: 700; line-height: 1.15; margin: 0.15rem 0;}
+.dp-card .s {font-size: 0.82rem; color: #64748b;}
+.dp-step {border-radius: 10px; padding: 0.7rem 0.9rem; background: rgba(148,163,184,0.08); height: 100%;}
+.dp-step b {font-size: 0.95rem;} .dp-step div {font-size: 0.85rem; color: #64748b; margin-top: 0.2rem;}
+</style>
+"""
+st.markdown(CSS, unsafe_allow_html=True)
+
+
+def card(label, value, sub, colour):
+    return (f'<div class="dp-card" style="--c:{colour}"><div class="k">{label}</div>'
+            f'<div class="v">{value}</div><div class="s">{sub}</div></div>')
+
 
 chosen = opt["chosen"]
-c1, c2, c3, c4, c5 = st.columns(5)
-c1.metric("Installed cost (excl. fixed)", f"£{chosen['cost']:,.0f}")
-c2.metric("Detectors", f"{len(chosen['design'].flame)} flame · {len(chosen['design'].gas)} gas")
-c3.metric("vs greedy heuristic", f"£{opt['greedy']['cost'] - chosen['cost']:,.0f} cheaper",
-          f"{(opt['greedy']['cost'] - chosen['cost']) / opt['greedy']['cost'] * 100:.1f}%")
-c4.metric("Targets met", f"{sum(chosen['coverage'][q.key] >= q.target for q in p.reqs)}/{len(p.reqs)}")
-c5.metric("Line-of-sight checks", f"{ctx['rays'] / 1e6:.1f} M", f"{ctx['timing']['coverage_s']:.1f} s")
-
-tabs = st.tabs(["1 · Plot plan → model", "2 · Line of sight", "3 · Optimiser", "4 · Design review", "5 · Report",
-                "6 · Quality flags"])
 flags = ctx["explain"].get("flags", [])
 nflag = {k: sum(x["severity"] == k for x in flags) for k in ("error", "warning", "info")}
+tcov = ctx["explain"]["truth_coverage"]
+met = sum(tcov[q.key] >= q.target for q in p.reqs)
+fixed = ctx["catalogue"]["cost"]["fixed"]
+saving = opt["greedy"]["cost"] - chosen["cost"]
+nfl, ngs = len(chosen["design"].flame), len(chosen["design"].gas)
+GREEN, AMBER, RED, BLUE, SLATE = "#16a34a", "#d97706", "#dc2626", "#2563eb", "#64748b"
+
+st.markdown(f'<p class="dp-title">🔥 DetectorPlace</p><p class="dp-sub">Fire &amp; gas detector layout, '
+            f'coverage check and cost estimate · <b>{plant.name}</b> · input: {ctx.get("source", "demo drawing")} '
+            f'· reader: {ctx.get("reader", "OpenCV rules")} · all data and rates illustrative</p>',
+            unsafe_allow_html=True)
+st.markdown('<div class="dp-cards">' + "".join([
+    card("Total installed cost", f"£{(chosen['cost'] + fixed) / 1000:,.0f}k",
+         f"£{chosen['cost']:,.0f} detectors &amp; cabling + £{fixed / 1000:,.0f}k fixed", BLUE),
+    card("Detectors", f"{nfl + ngs}", f"{nfl} flame · {ngs} gas", SLATE),
+    card("Saving vs simple design", f"{saving / opt['greedy']['cost'] * 100:.0f}%",
+         f"£{saving:,.0f} cheaper than the greedy rule of thumb", GREEN if saving > 0 else AMBER),
+    card("Coverage targets", f"{met} of {len(p.reqs)} met",
+         f"re-checked on {ctx.get('check_name', 'the true geometry')}", GREEN if met == len(p.reqs) else RED),
+    card("Quality checks", "OK" if nflag["error"] == 0 and nflag["warning"] <= 1 else
+         (f"{nflag['error']} error{'s' if nflag['error'] != 1 else ''}" if nflag["error"] else f"{nflag['warning']} warnings"),
+         f"{nflag['error']} errors · {nflag['warning']} warnings · {nflag['info']} notes",
+         RED if nflag["error"] else (AMBER if nflag["warning"] > 1 else GREEN)),
+]) + "</div>", unsafe_allow_html=True)
+
+T = st.tabs(["Overview", "3D view", "Drawing → model", "Line of sight", "Optimiser", "Design review", "Report",
+             "Quality checks"])
+tabs = T[2:]
 
 
 def plant_fig(show_grades=True, height=520):
@@ -236,7 +273,11 @@ with tabs[2]:
     if opt.get("milp", {}).get("cost"):
         fig.add_scatter(x=[opt["milp"]["cost"] / 1e3], y=[opt["milp"]["shortfall"] * 100], mode="markers",
                         name="exact MILP (time-limited)", marker=dict(symbol="diamond", size=11, color="#7c3aed"))
-    fig.update_yaxes(type="log", title="risk-weighted shortfall (%)", tickvals=[0.1, 0.3, 1, 3, 10, 30, 100],
+    fig.add_annotation(x=chosen["cost"] / 1e3, y=np.log10(max(chosen["shortfall"] * 100, 1e-3)), text="<b>Chosen</b>",
+                       showarrow=True, arrowhead=2, ax=40, ay=-40, font=dict(size=13, color="#d97706"))
+    fig.add_annotation(x=opt["greedy"]["cost"] / 1e3, y=np.log10(max(opt["greedy"]["shortfall"] * 100, 1e-3)),
+                       text="Simple rule of thumb", showarrow=True, arrowhead=2, ax=30, ay=40, font=dict(size=12))
+    fig.update_yaxes(type="log", title="risk left uncovered (%)", tickvals=[0.1, 0.3, 1, 3, 10, 30, 100],
                      ticktext=["0.1", "0.3", "1", "3", "10", "30", "100"])
     fig.update_xaxes(title="installed cost (£k)")
     fig.update_layout(height=430, margin=dict(l=10, r=10, t=10, b=10), legend=dict(orientation="h", y=1.08))
@@ -341,3 +382,105 @@ with tabs[5]:
         {"error": st.error, "warning": st.warning, "info": st.info}[x["severity"]](f"**{x['source']}** · {x['message']}")
     if not flags:
         st.caption("This cached run predates the quality checks; re-run from the sidebar to see them.")
+
+# ---------------------------------------------------------------- Overview
+with T[0]:
+    ex = ctx["explain"]
+    sched = ex["schedule"]
+    tb = report.tables(ctx)
+    steps = [("1 · Read the plant", f"{ctx.get('source', 'Drawing')} → {len(plant.obstacles)} equipment items, "
+                                    f"{int((plant.grades > 0).sum() * RES * RES):,} m² of hazard area, "
+                                    f"{len(plant.leaks)} leak sources"),
+             ("2 · Check every sight line", f"{ctx['rays'] / 1e6:.1f} million detector-to-point checks in 3D, "
+                                            f"{ctx['timing']['coverage_s']:.1f} s"),
+             ("3 · Optimise cost vs risk", f"Genetic algorithm searched {len(opt['history'])} generations; "
+                                           f"{len(opt['front'])} options from cheapest to safest"),
+             ("4 · Verify and report", f"Re-checked on {ctx.get('check_name', 'the true geometry')}, single-detector "
+                                       "failure check, quality flags, PDF report")]
+    cols = st.columns(4)
+    for c, (h, t) in zip(cols, steps):
+        c.markdown(f'<div class="dp-step"><b>{h}</b><div>{t}</div></div>', unsafe_allow_html=True)
+    st.write("")
+    a, b = st.columns([3, 2])
+    with a:
+        st.markdown("##### Coverage against each target")
+        cov = ex["coverage"]
+        labels = [q.label for q in p.reqs][::-1]
+        reqs = list(p.reqs)[::-1]
+        fig = go.Figure()
+        fig.add_bar(y=labels, x=[tcov[q.key] * 100 for q in reqs], orientation="h",
+                    marker_color=[GREEN if tcov[q.key] >= q.target else RED for q in reqs],
+                    text=[f"<b>{tcov[q.key] * 100:.1f}%</b>  (target {q.target * 100:.0f}%)" for q in reqs],
+                    textposition="outside", cliponaxis=False, name="Achieved (re-checked)",
+                    hovertemplate="%{y}: %{x:.1f}%<extra></extra>")
+        for i, q in enumerate(reqs):
+            fig.add_shape(type="line", x0=q.target * 100, x1=q.target * 100, y0=i - 0.42, y1=i + 0.42,
+                          line=dict(color="#111827", width=3))
+        fig.update_xaxes(range=[0, 125], title="% of area covered", tickvals=[0, 25, 50, 75, 100])
+        fig.update_layout(height=320, margin=dict(l=10, r=10, t=10, b=10), showlegend=False,
+                          plot_bgcolor="rgba(0,0,0,0)", bargap=0.35, font=dict(size=13))
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption("Bar = coverage achieved, re-checked on "
+                   f"{ctx.get('check_name', 'the true geometry')}. Black line = target. Green = met, red = not met.")
+    with b:
+        st.markdown("##### Where the money goes")
+        rows_c = [(r[0], float(str(r[2]).replace(",", ""))) for r in tb["cost"][1:-1] if float(str(r[2]).replace(",", "")) > 0]
+        rows_c.sort(key=lambda r: r[1])
+        fig = go.Figure(go.Bar(y=[r[0] for r in rows_c], x=[r[1] / 1000 for r in rows_c], orientation="h",
+                               marker_color=BLUE, text=[f"£{r[1] / 1000:,.1f}k" for r in rows_c],
+                               textposition="outside", cliponaxis=False,
+                               hovertemplate="%{y}: £%{x:.1f}k<extra></extra>"))
+        fig.update_xaxes(title="£k", range=[0, max(r[1] for r in rows_c) / 1000 * 1.35])
+        fig.update_layout(height=320, margin=dict(l=10, r=10, t=10, b=10), plot_bgcolor="rgba(0,0,0,0)",
+                          font=dict(size=12))
+        st.plotly_chart(fig, use_container_width=True)
+        st.caption("Indicative Class 4 estimate with placeholder rates.")
+    n1_bad = sum(bool(r["targets_missed"]) for r in ex["n_minus_1"])
+    st.info(f"**In plain English:** {nfl} flame and {ngs} gas detectors cover the plant for "
+            f"£{(chosen['cost'] + fixed) / 1000:,.0f}k, {met} of {len(p.reqs)} coverage targets are met on re-check, "
+            f"and the design is £{saving / 1000:,.0f}k cheaper than a simple rule-of-thumb layout. "
+            + (f"Losing any one of {n1_bad} detectors would drop a target below its limit, which an engineer "
+               "should review. " if n1_bad else "Any single detector can fail without breaking a target. ")
+            + "Open the **3D view** to see the layout.")
+
+# ---------------------------------------------------------------- 3D view
+with T[1]:
+    from detectorplace import view3d
+    ex = ctx["explain"]
+    sched = ex["schedule"]
+    c1, c2, c3 = st.columns([2, 2, 3])
+    colour_by = c1.radio("Colour the ground by", ["Coverage", "Hazard grade"], horizontal=True)
+    sel = c2.selectbox("Focus on one detector", ["(all detectors)"] + [r["tag"] for r in sched])
+    with c3:
+        o1, o2, o3, o4 = st.columns(4)
+        cones = o1.toggle("Cones", True)
+        gasr = o2.toggle("Gas radius", True)
+        labels_on = o3.toggle("Labels", False)
+        leaks_on = o4.toggle("Leaks", True)
+    selected = None if sel.startswith("(") else sel
+    fig3 = view3d.figure(ctx, chosen["design"], sched, colour_by="coverage" if colour_by == "Coverage" else "grade",
+                         selected=selected, show_cones=cones, show_gas_radius=gasr, show_leaks=leaks_on,
+                         show_labels=labels_on or bool(selected), height=700)
+    st.plotly_chart(fig3, use_container_width=True, config={"displaylogo": False})
+    if colour_by == "Coverage":
+        st.markdown(
+            '<span style="color:#2a9d8f">■</span> seen by 2+ flame detectors &nbsp; '
+            '<span style="color:#f5a524">■</span> seen by 1 &nbsp; <span style="color:#e5484d">■</span> fire area not seen '
+            '&nbsp; <span style="color:#8e4ec6">■</span> gas zone not covered &nbsp; '
+            '<span style="color:#94a3b8">■</span> equipment (darker = taller)', unsafe_allow_html=True)
+    else:
+        st.markdown('<span style="color:#f3a3a3">■</span> Grade A &nbsp; <span style="color:#f9c98f">■</span> Grade B '
+                    '&nbsp; <span style="color:#fbe9a6">■</span> Grade C', unsafe_allow_html=True)
+    st.caption("Drag to rotate, scroll to zoom, right-drag to pan. Equipment is drawn from the same height model "
+               "the coverage engine ray-marches through, so this is exactly what the optimiser saw.")
+    if selected:
+        r = next(r for r in sched if r["tag"] == selected)
+        d1, d2, d3, d4 = st.columns(4)
+        d1.markdown(card("Detector", r["tag"], r["type"], BLUE), unsafe_allow_html=True)
+        d2.markdown(card("Mounting", f"{r['mount_m']:.0f} m", "facing " + (f"{r['azimuth_deg']:.0f}°" if
+                         r["azimuth_deg"] is not None else "all round"), SLATE), unsafe_allow_html=True)
+        d3.markdown(card("Only this one sees", f"{r['unique_points']} m²", f"of {r['points_seen']} m² it sees", GREEN),
+                    unsafe_allow_html=True)
+        d4.markdown(card("Installed cost", f"£{r['cost']:,.0f}", "incl. cabling to panel", SLATE),
+                    unsafe_allow_html=True)
+        st.success(f"**Why {r['tag']} is here:** {r['why']}")
