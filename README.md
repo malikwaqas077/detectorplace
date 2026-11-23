@@ -54,7 +54,7 @@ below target. The "true geometry" column above checks that this margin worked.
 
 ## v0.2: CAD input, a learned drawing reader, and quality flags
 
-The v0.1 results above are unchanged (same pipeline, same seed). v0.2 adds three things, aimed at the
+The v0.1 results above are unchanged: a re-run of v0.2 gives the same GA layout (£129,980), greedy cost, true-geometry coverage and N-1 result. The time-limited MILP depends on the machine: on a 2-core cloud box its 600 s run found £129,504 with a bound of £120,232, so the GA is within 0.4% of that run's best. v0.2 adds three things, aimed at the
 question "the maths is exact, but what if the plant model is wrong?"
 
 **1. CAD input.** `cad.py` reads a DXF plot plan by layer: closed `EQUIP*` outlines with height from the entity
