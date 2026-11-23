@@ -12,7 +12,7 @@ import streamlit as st
 
 from detectorplace import pipeline, report, scene, segnet, viz
 from detectorplace.coverage import _cone_coverage, flame_wedge
-from detectorplace.detectors import FlameModel
+from detectorplace.detectors import CostModel, FlameModel, GasModel, catalogue_dict
 from detectorplace.evaluate import DEFAULT_REQS
 from detectorplace.plant import GRADES, RES, demo_plant
 
@@ -35,9 +35,35 @@ def baseline_ctx():
 SAMPLES = Path(__file__).parent / "samples"
 
 
-def run_input(args, gens):
+# Editable prices: (session key, label, model, field, step). Only cost fields; detector performance is untouched.
+_DEF = {"flame": FlameModel(), "gas": GasModel(), "cost": CostModel()}
+RATES = [("rate_f_supply", "Flame detector: supply (£)", "flame", "supply", 100.0),
+         ("rate_f_install", "Flame detector: install (£)", "flame", "install", 100.0),
+         ("rate_f_high", "Flame detector: extra for high mounting (£)", "flame", "high_mount_extra", 50.0),
+         ("rate_g_supply", "Gas detector: supply (£)", "gas", "supply", 100.0),
+         ("rate_g_install", "Gas detector: install (£)", "gas", "install", 50.0),
+         ("rate_cable", "Cable cost per metre (£/m)", "cost", "cable_per_m", 1.0),
+         ("rate_tail", "Tail allowance per device (m)", "cost", "tail_m", 1.0),
+         ("rate_io", "Panel I/O and commissioning per device (£)", "cost", "io_per_device", 50.0),
+         ("rate_fixed", "Fixed cost: panel, engineering, FAT (£)", "cost", "fixed", 1000.0)]
+
+
+def reset_rates():
+    for key, _, model, field, _ in RATES:
+        st.session_state[key] = float(getattr(_DEF[model], field))
+
+
+def rate_models():
+    """FlameModel, GasModel and CostModel built from the defaults with the entered prices replaced."""
+    vals = {m: {} for m in _DEF}
+    for key, _, model, field, _ in RATES:
+        vals[model][field] = float(st.session_state[key])
+    return {m: replace(_DEF[m], **vals[m]) for m in _DEF}
+
+
+def run_input(args, gens, models):
     bar = st.progress(0.0, "Reading the input and building the coverage model...")
-    new = pipeline.build_from(**args)
+    new = pipeline.build_from(**args, **models)
     cb = lambda g, n, best: bar.progress(g / n, f"Generation {g}/{n} · cheapest compliant £{best:,.0f}"
                                          if best == best else f"Generation {g}/{n}")
     new["opt"] = pipeline.optimise(new, generations=gens, callback=cb)
@@ -82,13 +108,24 @@ with st.sidebar:
         if up is not None:
             import io
             args = dict(source=io.StringIO(up.getvalue().decode("utf-8", errors="replace")), kind="dxf", name=up.name)
+    if "rate_fixed" not in st.session_state:
+        reset_rates()
+    with st.expander("Prices and rates"):
+        for key, label, _, field, step in RATES:
+            st.number_input(label, min_value=0.0, step=step, format="%.1f" if field == "tail_m" else "%.0f", key=key)
+        st.button("Reset to defaults", on_click=reset_rates, use_container_width=True)
+    st.caption("Default rates are placeholders. Enter supplier and company rates for a real estimate.")
+    models = rate_models()
+    if st.session_state.ctx.get("catalogue") != catalogue_dict(**models):
+        st.info("These rates differ from the ones in the results shown. Click Run DetectorPlace, or Re-optimise "
+                "in the Optimiser tab, to apply them.")
     if args is not None:
         if args.get("reader") == "learned" and not segnet.available():
             st.error("The learned reader needs torch and models/segnet.pt.")
         gens = st.slider("Optimiser generations", 20, 120, 50, 10)
         if st.button("Run DetectorPlace", type="primary", use_container_width=True):
             try:
-                st.session_state.ctx = run_input(args, gens)
+                st.session_state.ctx = run_input(args, gens, models)
                 st.session_state.input = args
                 st.rerun()
             except Exception as e:  # show input problems to the user, not a stack trace
@@ -318,11 +355,11 @@ with tabs[2]:
             bar = st.progress(0.0, "Building coverage model...")
             inp = st.session_state.get("input")
             if inp is None:
-                new = pipeline.build(reqs=new_reqs, margin=margin)
+                new = pipeline.build(reqs=new_reqs, margin=margin, **models)
             else:
                 if hasattr(inp.get("source"), "seek"):
                     inp["source"].seek(0)
-                new = pipeline.build_from(**inp, reqs=new_reqs, margin=margin)
+                new = pipeline.build_from(**inp, reqs=new_reqs, margin=margin, **models)
             cb = lambda g, n, best: bar.progress(g / n, f"Generation {g}/{n} · cheapest compliant £{best:,.0f}"
                                                  if best == best else f"Generation {g}/{n}")
             new["opt"] = pipeline.optimise(new, generations=gens, callback=cb)
