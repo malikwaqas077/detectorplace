@@ -22,10 +22,19 @@ for c in python3.12 python3.11 python3.13 python3.10 /opt/homebrew/bin/python3 /
   fi
 done
 if [ -z "$PY" ]; then
-  echo ""
-  echo "Python 3.10 or newer is needed. Install it with:  brew install python@3.12"
-  echo "(or from https://www.python.org/downloads/macos/), then run this file again."
-  read -n 1 -s -r -p "Press any key to close."
+  # No suitable Python and Homebrew may not be writable: get a private Python with uv (no admin rights needed).
+  UV="$(command -v uv || echo "$HOME/.local/bin/uv")"
+  if [ ! -x "$UV" ]; then
+    echo "No Python 3.10+ found. Installing uv (a Python manager, into ~/.local/bin, no admin needed) ..."
+    curl -LsSf https://astral.sh/uv/install.sh | env UV_NO_MODIFY_PATH=1 sh
+    UV="$HOME/.local/bin/uv"
+  fi
+  echo "Installing Python 3.12 for DetectorPlace only ..."
+  "$UV" python install 3.12
+  PY="$("$UV" python find 3.12)"
+fi
+if [ -z "$PY" ]; then
+  echo "Could not get Python 3.10+. Install it from https://www.python.org/downloads/macos/ and run this again."
   exit 1
 fi
 echo "Using $($PY --version) at $(command -v $PY)"
