@@ -134,8 +134,22 @@ def detector_traces(ctx, rows, selected=None, show_cones=True, show_gas_radius=T
             X += xs; Y += ys; Z += zs
             I += [v + n for v in i]; J += [v + n for v in j]; K += [v + n for v in k]
         if X:
-            tr.append(go.Mesh3d(x=X, y=Y, z=Z, i=I, j=J, k=K, color="#3b82f6", opacity=0.13 if not selected else 0.22,
-                                name="Flame detector cone of vision", hoverinfo="skip", showlegend=True))
+            tr.append(go.Mesh3d(x=X, y=Y, z=Z, i=I, j=J, k=K, color="#1d4ed8", opacity=0.32 if not selected else 0.45,
+                                name="Flame detector cone of vision", hoverinfo="skip", showlegend=True,
+                                legendgroup="cones", flatshading=True,
+                                lighting=dict(ambient=0.9, diffuse=0.2, specular=0.0)))
+            # Outline each cone (apex to both edges, plus the far arc) so it reads clearly from any angle.
+            ox, oy, oz = [], [], []
+            for r in flames:
+                if selected and r["tag"] != selected:
+                    continue
+                wx, wy = flame_wedge(r["x"], r["y"], r["azimuth_deg"], fm, n=18)
+                ax_, ay_ = list(wx[1:-1]), list(wy[1:-1])
+                ox += [r["x"]] + ax_ + [r["x"], None]
+                oy += [r["y"]] + ay_ + [r["y"], None]
+                oz += [r["mount_m"]] + [fm.fire_height_m] * len(ax_) + [r["mount_m"], None]
+            tr.append(go.Scatter3d(x=ox, y=oy, z=oz, mode="lines", line=dict(color="#1e3a8a", width=3),
+                                   hoverinfo="skip", showlegend=False, legendgroup="cones"))
     # poles
     px, py, pz = [], [], []
     for r in rows:
@@ -186,11 +200,19 @@ def selected_view_trace(ctx, row):
                         name=f"Seen by {row['tag']} ({len(xy)} m²)", hoverinfo="skip")
 
 
+def ground_plain(plant):
+    """Neutral ground with no coverage or grade colouring: just the plant drawing."""
+    ny, nx = plant.heights[::2, ::2].shape
+    return _ground(plant, np.zeros((ny, nx), int), ["#e5e7eb"], ["Ground"], "Ground")
+
+
 def figure(ctx, design, rows, colour_by="coverage", selected=None, show_cones=True, show_gas_radius=True,
            show_leaks=True, show_labels=False, height=680, z_scale=1.3):
+    """colour_by: "coverage", "grade" or "plain" (no overlay on the ground)."""
     plant = ctx["plant"]
     fig = go.Figure()
-    fig.add_trace(ground_by_coverage(ctx, design) if colour_by == "coverage" else ground_by_grade(plant))
+    fig.add_trace({"coverage": ground_by_coverage, "grade": lambda c, d: ground_by_grade(c["plant"]),
+                   "plain": lambda c, d: ground_plain(c["plant"])}[colour_by](ctx, design))
     for t in equipment_traces(plant):
         fig.add_trace(t)
     for t in detector_traces(ctx, rows, selected, show_cones, show_gas_radius, show_labels):
@@ -221,6 +243,6 @@ def figure(ctx, design, rows, colour_by="coverage", selected=None, show_cones=Tr
             zaxis=dict(title="height (m)", range=[-0.2, zmax], backgroundcolor="#f1f5f9", showspikes=False),
             aspectmode="manual",
             aspectratio=dict(x=plant.width / span * 1.6, y=plant.depth / span * 1.6, z=zmax / span * 1.6 * z_scale),
-            camera=dict(eye=dict(x=0.3, y=-1.35, z=1.6), up=dict(x=0, y=0, z=1))),
+            camera=dict(eye=dict(x=0.25, y=-1.15, z=1.3), up=dict(x=0, y=0, z=1))),
         uirevision="keep-camera")
     return fig

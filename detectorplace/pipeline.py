@@ -84,7 +84,7 @@ def build_from(source, kind="image", px_per_m=10.0, reader="opencv", truth=None,
     return {"truth": check, "img": img, "plant": plant, "vision_debug": dbg, "nn_debug": nn_dbg, "alt_plant": alt,
             "cand": cand, "problem": p, "vision_score": score, "timing": t,
             "catalogue": catalogue_dict(flame, gas, cost), "rays": int(Mf.size + Mg.size),
-            "source": src, "reader": rdr, "check_name": check_name, "input_flags": flags}
+            "source": src, "reader": rdr, "check_name": check_name, "input_flags": flags, "px_per_m": px_per_m}
 
 
 def verify_on_truth(ctx, d: Design, flame=FlameModel(), gas=GasModel()):
@@ -99,13 +99,14 @@ def verify_on_truth(ctx, d: Design, flame=FlameModel(), gas=GasModel()):
     return coverage(p, Design(np.arange(len(d.flame)), np.arange(len(d.gas))))
 
 
-def optimise(ctx, generations=80, pop_size=100, seed=0, milp_seconds=0, callback=None):
+def optimise(ctx, generations=80, pop_size=100, seed=0, milp_seconds=0, callback=None, on_step=None):
     p = ctx["problem"]
     t0 = time.perf_counter()
     g = baselines.greedy(p)
     t_greedy = time.perf_counter() - t0
     t0 = time.perf_counter()
-    front, history = nsga2.run(p, pop_size=pop_size, generations=generations, seed=seed, callback=callback)
+    front, history = nsga2.run(p, pop_size=pop_size, generations=generations, seed=seed, callback=callback,
+                               on_step=on_step)
     t_ga = time.perf_counter() - t0
     feas = [r for r in front if r["feasible"]]
     best = feas[0] if feas else min(front, key=lambda r: r["shortfall"])

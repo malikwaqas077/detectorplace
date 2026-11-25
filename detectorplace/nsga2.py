@@ -117,7 +117,9 @@ def repair(p: Problem, fg, gg, max_add=40):
 
 
 def run(p: Problem, pop_size=120, generations=160, seed=0, seeds=(), p_on=0.03, p_mut=None,
-        prune_rate=0.3, repair_rate=0.4, callback=None):
+        prune_rate=0.3, repair_rate=0.4, callback=None, on_step=None):
+    """callback(gen, n, best_cost); on_step(gen, n, best_cost, design) also gets the current best layout
+    (cheapest one meeting every target, or the one closest to meeting them) for live display."""
     rng = np.random.default_rng(seed)
     nf, ng = p.n_fpos, len(p.g_cost)
     p_mut = p_mut or 1.5 / (nf + ng)
@@ -195,6 +197,12 @@ def run(p: Problem, pop_size=120, generations=160, seed=0, seeds=(), p_on=0.03, 
         history.append({"generation": gen + 1, "cheapest_feasible": best, "front_size": len(non_dominated_sort(F)[0])})
         if callback:
             callback(gen + 1, generations, best)
+        if on_step:
+            if FE.any():
+                bi = int(np.flatnonzero(FE)[np.argmin(F[FE, 0])])
+            else:
+                bi = int(np.lexsort((F[:, 0], F[:, 1]))[0])
+            on_step(gen + 1, generations, best, decode(p, *pop[bi]))
 
     front = non_dominated_sort(F)[0]
     results = []
